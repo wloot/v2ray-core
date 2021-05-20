@@ -13,6 +13,11 @@ const (
 
 var pool = bytespool.GetPool(Size)
 
+type UDP struct {
+	Addr string
+	Port uint16
+}
+
 // ownership represents the data owner of the buffer.
 type ownership uint8
 
@@ -30,6 +35,8 @@ type Buffer struct {
 	start     int32
 	end       int32
 	ownership ownership
+	unmanaged bool
+	UDP       *UDP
 }
 
 // New creates a Buffer with 0 length and 2K capacity.
@@ -79,6 +86,7 @@ func (b *Buffer) Release() {
 	case bytespools:
 		bytespool.Free(p) // nolint: staticcheck
 	}
+	b.UDP = nil
 }
 
 // Clear clears the content of the buffer, results an empty buffer with

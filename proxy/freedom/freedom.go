@@ -4,6 +4,7 @@ package freedom
 
 import (
 	"context"
+	"strconv"
 	"time"
 
 	core "github.com/v2fly/v2ray-core/v5"
@@ -17,6 +18,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
 	"github.com/v2fly/v2ray-core/v5/features/policy"
+	"github.com/v2fly/v2ray-core/v5/features/stats"
 	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
@@ -139,7 +141,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		if destination.Network == net.Network_TCP {
 			writer = buf.NewWriter(conn)
 		} else {
-			writer = &buf.SequentialWriter{Writer: conn}
+			writer = newPacketWriter(conn)
 		}
 
 		if err := buf.Copy(input, writer, buf.UpdateActivity(timer)); err != nil {
@@ -156,7 +158,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		if destination.Network == net.Network_TCP {
 			reader = buf.NewReader(conn)
 		} else {
-			reader = buf.NewPacketReader(conn)
+			reader = newPacketReader(conn)
 		}
 		if err := buf.Copy(reader, output, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to process response").Base(err)
@@ -169,5 +171,96 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		return newError("connection ends").Base(err)
 	}
 
+	return nil
+}
+
+func newPacketReader(conn net.Conn) buf.Reader {
+	iConn := conn
+	statConn, ok := iConn.(*internet.StatCouterConnection)
+	if ok {
+		iConn = statConn.Connection
+	}
+	var counter stats.Counter
+	if statConn != nil {
+		counter = statConn.ReadCounter
+	}
+	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
+		return &packetReader{
+			c, counter,
+		}
+	}
+	return &buf.PacketReader{Reader: conn}
+}
+
+type packetReader struct {
+	conn    *internet.PacketConnWrapper
+	counter stats.Counter
+}
+
+func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
+	b := buf.New()
+	b.Resize(0, buf.Size)
+	n, d, err := r.conn.ReadFrom(b.Bytes())
+	if err != nil {
+		b.Release()
+		return nil, err
+	}
+	b.Resize(0, int32(n))
+	b.UDP = &buf.UDP{
+		Addr: d.(*net.UDPAddr).IP.String(),
+		Port: uint16(d.(*net.UDPAddr).Port),
+	}
+	if r.counter != nil {
+		r.counter.Add(int64(n))
+	}
+	return buf.MultiBuffer{b}, nil
+}
+
+func newPacketWriter(conn net.Conn) buf.Writer {
+	iConn := conn
+	statConn, ok := iConn.(*internet.StatCouterConnection)
+	if ok {
+		iConn = statConn.Connection
+	}
+	var counter stats.Counter
+	if statConn != nil {
+		counter = statConn.WriteCounter
+	}
+	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
+		return &packetWriter{
+			c,
+			counter,
+		}
+	}
+	return &buf.SequentialWriter{Writer: conn}
+}
+
+type packetWriter struct {
+	conn    *internet.PacketConnWrapper
+	counter stats.Counter
+}
+
+func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) (err error) {
+	for _, buffer := range mb {
+		var n int
+		if buffer.UDP != nil {
+			destAddr, ex := net.ResolveUDPAddr("udp", buffer.UDP.Addr+":"+strconv.Itoa(int(buffer.UDP.Port)))
+			if ex != nil {
+				err = ex
+			} else {
+				n, err = w.conn.WriteTo(buffer.Bytes(), destAddr)
+			}
+		} else {
+			n, err = w.conn.Write(buffer.Bytes())
+		}
+		if err != nil {
+			buf.ReleaseMulti(mb)
+			return err
+		}
+		buffer.Release()
+		if w.counter != nil {
+			w.counter.Add(int64(n))
+		}
+	}
 	return nil
 }
