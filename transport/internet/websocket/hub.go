@@ -31,6 +31,8 @@ type requestHandler struct {
 	earlyDataHeaderName string
 }
 
+var replacer = strings.NewReplacer("+", "-", "/", "_", "=", "")
+
 var upgrader = &websocket.Upgrader{
 	ReadBufferSize:   4 * 1024,
 	WriteBufferSize:  4 * 1024,
@@ -53,7 +55,8 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 			return
 		}
 		earlyDataStr := request.Header.Get(h.earlyDataHeaderName)
-		earlyData = base64.NewDecoder(base64.RawURLEncoding, bytes.NewReader([]byte(earlyDataStr)))
+		// Compatible with xray client
+		earlyData = base64.NewDecoder(base64.RawURLEncoding, bytes.NewReader([]byte(replacer.Replace(earlyDataStr))))
 	} else {
 		if strings.HasPrefix(request.URL.RequestURI(), h.path) {
 			earlyDataStr := request.URL.RequestURI()[len(h.path):]
