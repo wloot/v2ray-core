@@ -28,6 +28,8 @@ type requestHandler struct {
 	earlyDataHeaderName string
 }
 
+var replacer = strings.NewReplacer("+", "-", "/", "_", "=", "")
+
 var upgrader = &websocket.Upgrader{
 	ReadBufferSize:   4 * 1024,
 	WriteBufferSize:  4 * 1024,
@@ -52,7 +54,7 @@ func (h *requestHandler) ServeHTTP(writer http.ResponseWriter, request *http.Req
 			return
 		}
 		earlyDataStr := request.Header.Get(h.earlyDataHeaderName)
-		earlyData = base64.NewDecoder(base64.RawURLEncoding, bytes.NewReader([]byte(earlyDataStr)))
+		earlyData = base64.NewDecoder(base64.RawURLEncoding, bytes.NewReader([]byte(replacer.Replace(earlyDataStr))))
 		if strings.EqualFold("Sec-WebSocket-Protocol", h.earlyDataHeaderName) {
 			responseHeader.Set(h.earlyDataHeaderName, earlyDataStr)
 		}
