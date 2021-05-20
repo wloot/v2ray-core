@@ -13,6 +13,11 @@ const (
 
 var pool = bytespool.GetPool(Size)
 
+type UDP struct {
+	Addr string
+	Port uint16
+}
+
 // Buffer is a recyclable allocation of a byte array. Buffer.Release() recycles
 // the buffer into an internal buffer pool, in order to recreate a buffer more
 // quickly.
@@ -21,6 +26,7 @@ type Buffer struct {
 	start     int32
 	end       int32
 	unmanaged bool
+	UDP       *UDP
 }
 
 // New creates a Buffer with 0 length and 2K capacity.
@@ -57,6 +63,7 @@ func (b *Buffer) Release() {
 	b.v = nil
 	b.Clear()
 	pool.Put(p) // nolint: staticcheck
+	b.UDP = nil
 }
 
 // Clear clears the content of the buffer, results an empty buffer with
