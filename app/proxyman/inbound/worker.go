@@ -18,6 +18,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/features/stats"
 	"github.com/v2fly/v2ray-core/v4/proxy"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/tcp"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/udp"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
@@ -91,7 +92,7 @@ func (w *tcpWorker) callback(conn internet.Connection) {
 	}
 	ctx = session.ContextWithContent(ctx, content)
 	if w.uplinkCounter != nil || w.downlinkCounter != nil {
-		conn = &internet.StatCouterConnection{
+		conn = &stat.CounterConnection{
 			Connection:   conn,
 			ReadCounter:  w.uplinkCounter,
 			WriteCounter: w.downlinkCounter,
@@ -455,7 +456,7 @@ func (w *dsWorker) callback(conn internet.Connection) {
 	}
 	ctx = session.ContextWithContent(ctx, content)
 	if w.uplinkCounter != nil || w.downlinkCounter != nil {
-		conn = &internet.StatCouterConnection{
+		conn = &stat.CounterConnection{
 			Connection:   conn,
 			ReadCounter:  w.uplinkCounter,
 			WriteCounter: w.downlinkCounter,

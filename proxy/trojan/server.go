@@ -24,6 +24,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/tls"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/udp"
 )
@@ -105,7 +106,7 @@ func (s *Server) Process(ctx context.Context, network net.Network, conn internet
 	sid := session.ExportIDToError(ctx)
 
 	iConn := conn
-	if statConn, ok := iConn.(*internet.StatCouterConnection); ok {
+	if statConn, ok := iConn.(*stat.CounterConnection); ok {
 		iConn = statConn.Connection
 	}
 
