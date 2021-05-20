@@ -6,6 +6,9 @@ import (
 	"os"
 	"syscall"
 	"time"
+
+	"github.com/v2fly/v2ray-core/v4/features/stats"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 )
 
 // Reader extends io.Reader with MultiBuffer.
@@ -52,9 +55,16 @@ func NewReader(reader io.Reader) Reader {
 		return mr
 	}
 
+	tReader := reader
+	var statCounter stats.Counter
+	if statConn, ok := reader.(*stat.CounterConnection); ok {
+		statCounter = statConn.ReadCounter
+		reader = statConn.Connection
+	}
+
 	if isPacketReader(reader) {
 		return &PacketReader{
-			Reader: reader,
+			Reader: tReader,
 		}
 	}
 
@@ -65,13 +75,13 @@ func NewReader(reader io.Reader) Reader {
 			if err != nil {
 				newError("failed to get sysconn").Base(err).WriteToLog()
 			} else {
-				return NewReadVReader(reader, rawConn)
+				return NewReadVReader(reader, rawConn, statCounter)
 			}
 		}
 	}
 
 	return &SingleReader{
-		Reader: reader,
+		Reader: tReader,
 	}
 }
 
@@ -104,13 +114,21 @@ func NewWriter(writer io.Writer) Writer {
 		return mw
 	}
 
+	tWriter := writer
+	var statCounter stats.Counter
+	if statConn, ok := writer.(*stat.CounterConnection); ok {
+		statCounter = statConn.ReadCounter
+		writer = statConn.Connection
+	}
+
 	if isPacketWriter(writer) {
 		return &SequentialWriter{
-			Writer: writer,
+			Writer: tWriter,
 		}
 	}
 
 	return &BufferToBytesWriter{
-		Writer: writer,
+		Writer:      writer,
+		statCounter: statCounter,
 	}
 }

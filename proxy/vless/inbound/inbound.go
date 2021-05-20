@@ -28,6 +28,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/proxy/vless"
 	"github.com/v2fly/v2ray-core/v4/proxy/vless/encoding"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/tls"
 )
 
@@ -133,7 +134,7 @@ func (h *Handler) Process(ctx context.Context, network net.Network, connection i
 	sid := session.ExportIDToError(ctx)
 
 	iConn := connection
-	statConn, ok := iConn.(*internet.StatCouterConnection)
+	statConn, ok := iConn.(*stat.CounterConnection)
 	if ok {
 		iConn = statConn.Connection
 	}

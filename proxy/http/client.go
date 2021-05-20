@@ -26,6 +26,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/features/policy"
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/tls"
 )
 
@@ -233,7 +234,7 @@ func setUpHTTPTunnel(ctx context.Context, dest net.Destination, target string, u
 	}
 
 	iConn := rawConn
-	if statConn, ok := iConn.(*internet.StatCouterConnection); ok {
+	if statConn, ok := iConn.(*stat.CounterConnection); ok {
 		iConn = statConn.Connection
 	}
 

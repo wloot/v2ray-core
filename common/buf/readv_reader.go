@@ -8,6 +8,7 @@ import (
 	"syscall"
 
 	"github.com/v2fly/v2ray-core/v4/common/platform"
+	"github.com/v2fly/v2ray-core/v4/features/stats"
 )
 
 type allocStrategy struct {
@@ -51,20 +52,22 @@ type multiReader interface {
 // ReadVReader is a Reader that uses readv(2) syscall to read data.
 type ReadVReader struct {
 	io.Reader
-	rawConn syscall.RawConn
-	mr      multiReader
-	alloc   allocStrategy
+	rawConn     syscall.RawConn
+	mr          multiReader
+	alloc       allocStrategy
+	statCounter stats.Counter
 }
 
 // NewReadVReader creates a new ReadVReader.
-func NewReadVReader(reader io.Reader, rawConn syscall.RawConn) *ReadVReader {
+func NewReadVReader(reader io.Reader, rawConn syscall.RawConn, statCounter stats.Counter) *ReadVReader {
 	return &ReadVReader{
 		Reader:  reader,
 		rawConn: rawConn,
 		alloc: allocStrategy{
 			current: 1,
 		},
-		mr: newMultiReader(),
+		mr:          newMultiReader(),
+		statCounter: statCounter,
 	}
 }
 
@@ -120,6 +123,9 @@ func (r *ReadVReader) readMulti() (MultiBuffer, error) {
 func (r *ReadVReader) ReadMultiBuffer() (MultiBuffer, error) {
 	if r.alloc.Current() == 1 {
 		b, err := ReadBuffer(r.Reader)
+		if r.statCounter != nil {
+			r.statCounter.Add(int64(b.Len()))
+		}
 		if b.IsFull() {
 			r.alloc.Adjust(1)
 		}
@@ -127,6 +133,9 @@ func (r *ReadVReader) ReadMultiBuffer() (MultiBuffer, error) {
 	}
 
 	mb, err := r.readMulti()
+	if r.statCounter != nil {
+		r.statCounter.Add(int64(mb.Len()))
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -15,6 +15,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/proxy"
 	"github.com/v2fly/v2ray-core/v4/transport"
 	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 	"github.com/v2fly/v2ray-core/v4/transport/internet/tls"
 	"github.com/v2fly/v2ray-core/v4/transport/pipe"
 )
@@ -213,7 +214,7 @@ func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Conn
 
 func (h *Handler) getStatCouterConnection(conn internet.Connection) internet.Connection {
 	if h.uplinkCounter != nil || h.downlinkCounter != nil {
-		return &internet.StatCouterConnection{
+		return &stat.CounterConnection{
 			Connection:   conn,
 			ReadCounter:  h.downlinkCounter,
 			WriteCounter: h.uplinkCounter,

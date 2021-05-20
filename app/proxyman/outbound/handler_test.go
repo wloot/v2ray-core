@@ -13,7 +13,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/common/serial"
 	"github.com/v2fly/v2ray-core/v4/features/outbound"
 	"github.com/v2fly/v2ray-core/v4/proxy/freedom"
-	"github.com/v2fly/v2ray-core/v4/transport/internet"
+	"github.com/v2fly/v2ray-core/v4/transport/internet/stat"
 )
 
 func TestInterfaces(t *testing.T) {
@@ -46,7 +46,7 @@ func TestOutboundWithoutStatCounter(t *testing.T) {
 		ProxySettings: serial.ToTypedMessage(&freedom.Config{}),
 	})
 	conn, _ := h.(*Handler).Dial(ctx, net.TCPDestination(net.DomainAddress("localhost"), 13146))
-	_, ok := conn.(*internet.StatCouterConnection)
+	_, ok := conn.(*stat.CounterConnection)
 	if ok {
 		t.Errorf("Expected conn to not be StatCouterConnection")
 	}
@@ -75,7 +75,7 @@ func TestOutboundWithStatCounter(t *testing.T) {
 		ProxySettings: serial.ToTypedMessage(&freedom.Config{}),
 	})
 	conn, _ := h.(*Handler).Dial(ctx, net.TCPDestination(net.DomainAddress("localhost"), 13146))
-	_, ok := conn.(*internet.StatCouterConnection)
+	_, ok := conn.(*stat.CounterConnection)
 	if !ok {
 		t.Errorf("Expected conn to be StatCouterConnection")
 	}

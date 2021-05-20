@@ -7,13 +7,15 @@ import (
 
 	"github.com/v2fly/v2ray-core/v4/common"
 	"github.com/v2fly/v2ray-core/v4/common/errors"
+	"github.com/v2fly/v2ray-core/v4/features/stats"
 )
 
 // BufferToBytesWriter is a Writer that writes alloc.Buffer into underlying writer.
 type BufferToBytesWriter struct {
 	io.Writer
 
-	cache [][]byte
+	cache       [][]byte
+	statCounter stats.Counter
 }
 
 // WriteMultiBuffer implements Writer. This method takes ownership of the given buffer.
@@ -24,6 +26,12 @@ func (w *BufferToBytesWriter) WriteMultiBuffer(mb MultiBuffer) error {
 	if size == 0 {
 		return nil
 	}
+
+	defer func() {
+		if w.statCounter != nil {
+			w.statCounter.Add(int64(mb.Len()))
+		}
+	}()
 
 	if len(mb) == 1 {
 		return WriteAllBytes(w.Writer, mb[0].Bytes())
