@@ -180,7 +180,7 @@ func parseResponse(payload []byte) (*IPRecord, error) {
 	ipRecord := &IPRecord{
 		ReqID:  h.ID,
 		RCode:  h.RCode,
-		Expire: now.Add(time.Second * 600),
+		Expire: now.Add(time.Second * 120),
 	}
 
 L:
@@ -193,12 +193,8 @@ L:
 			break
 		}
 
-		ttl := ah.TTL
-		if ttl == 0 {
-			ttl = 600
-		}
-		expire := now.Add(time.Duration(ttl) * time.Second)
-		if ipRecord.Expire.After(expire) {
+		expire := now.Add(time.Duration(ah.TTL) * time.Second)
+		if ipRecord.Expire.Before(expire) {
 			ipRecord.Expire = expire
 		}
 
@@ -226,5 +222,9 @@ L:
 		}
 	}
 
+	maxExpire := now.Add(time.Second * 86400)
+	if ipRecord.Expire.After(maxExpire) {
+		ipRecord.Expire = maxExpire
+	}
 	return ipRecord, nil
 }
