@@ -8,6 +8,8 @@ import (
 	"sync"
 	"time"
 
+	core "github.com/v2fly/v2ray-core/v4"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/connectivity"
@@ -100,7 +102,8 @@ func getGrpcClient(ctx context.Context, dest net.Destination, dialOption grpc.Di
 				return nil, err
 			}
 			address := net.ParseAddress(rawHost)
-			return internet.DialSystem(ctx, net.TCPDestination(address, port), nil)
+			detachedContext := core.ToBackgroundDetachedContext(ctx)
+			return internet.DialSystem(detachedContext, net.TCPDestination(address, port), nil)
 		}),
 	)
 	globalDialerMap[dest] = conn

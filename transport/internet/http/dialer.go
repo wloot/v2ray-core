@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"sync"
 
+	core "github.com/v2fly/v2ray-core/v4"
+
 	"golang.org/x/net/http2"
 
 	"github.com/v2fly/v2ray-core/v4/common"
@@ -51,7 +53,8 @@ func getHTTPClient(ctx context.Context, dest net.Destination, tlsSettings *tls.C
 			}
 			address := net.ParseAddress(rawHost)
 
-			pconn, err := internet.DialSystem(ctx, net.TCPDestination(address, port), nil)
+			detachedContext := core.ToBackgroundDetachedContext(ctx)
+			pconn, err := internet.DialSystem(detachedContext, net.TCPDestination(address, port), nil)
 			if err != nil {
 				return nil, err
 			}
