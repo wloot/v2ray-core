@@ -34,7 +34,16 @@ func NewStatsServer(manager feature_stats.Manager) StatsServiceServer {
 func (s *statsServer) GetStats(ctx context.Context, request *GetStatsRequest) (*GetStatsResponse, error) {
 	c := s.stats.GetCounter(request.Name)
 	if c == nil {
-		return nil, newError(request.Name, " not found.")
+		m := s.stats.GetMapper(request.Name)
+		if m == nil {
+			return nil, newError(request.Name, " not found.")
+		}
+		return &GetStatsResponse{
+			Stat: &Stat{
+				Name:  request.Name,
+				Value: m.TuneAndCount(),
+			},
+		}, nil
 	}
 	var value int64
 	if request.Reset_ {
