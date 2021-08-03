@@ -13,6 +13,7 @@ import (
 	"github.com/v2fly/v2ray-core/v4/app/router"
 	"github.com/v2fly/v2ray-core/v4/common/errors"
 	"github.com/v2fly/v2ray-core/v4/common/net"
+	"github.com/v2fly/v2ray-core/v4/common/retry"
 	"github.com/v2fly/v2ray-core/v4/common/strmatcher"
 	"github.com/v2fly/v2ray-core/v4/features/dns"
 	"github.com/v2fly/v2ray-core/v4/features/routing"
@@ -191,9 +192,13 @@ func (c *Client) Name() string {
 
 // QueryIP send DNS query to the name server with the client's IP.
 func (c *Client) QueryIP(ctx context.Context, domain string, option dns.IPOption, disableCache bool) ([]net.IP, error) {
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	ips, err := c.server.QueryIP(ctx, domain, c.clientIP, option, disableCache)
-	cancel()
+	var ips []net.IP
+	err := retry.ExponentialBackoff(2, 50).On(func() (err error) {
+		dnsCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		ips, err = c.server.QueryIP(dnsCtx, domain, c.clientIP, option, disableCache)
+		cancel()
+		return
+	})
 
 	if err != nil {
 		return ips, err
