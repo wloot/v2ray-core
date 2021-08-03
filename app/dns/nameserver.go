@@ -11,6 +11,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/app/router"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/common/net"
+	"github.com/v2fly/v2ray-core/v5/common/retry"
 	"github.com/v2fly/v2ray-core/v5/common/session"
 	"github.com/v2fly/v2ray-core/v5/features"
 	"github.com/v2fly/v2ray-core/v5/features/dns"
@@ -192,9 +193,13 @@ func (c *Client) QueryIP(ctx context.Context, domain string, option dns.IPOption
 	disableCache := c.cacheStrategy == CacheStrategy_CacheDisabled
 
 	ctx = session.ContextWithInbound(ctx, &session.Inbound{Tag: c.tag})
-	ctx, cancel := context.WithTimeout(ctx, 4*time.Second)
-	ips, err := server.QueryIP(ctx, domain, c.clientIP, queryOption, disableCache)
-	cancel()
+	var ips []net.IP
+	err := retry.ExponentialBackoff(2, 500).On(func() (err error) {
+		dnsCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
+		ips, err = server.QueryIP(dnsCtx, domain, c.clientIP, queryOption, disableCache)
+		cancel()
+		return
+	})
 
 	if err != nil || queryOption.FakeEnable {
 		return ips, err
