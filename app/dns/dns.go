@@ -218,23 +218,44 @@ func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) ([]net.IP, er
 	}
 
 	// Name servers lookup
+	succ := false
 	errs := []error{}
-	ctx := session.ContextWithInbound(s.ctx, &session.Inbound{Tag: s.tag})
-	for _, client := range s.sortClients(domain) {
+	wg := sync.WaitGroup{}
+	groupIps := sync.Map{}
+	ctx, cancel := context.WithCancel(session.ContextWithInbound(s.ctx, &session.Inbound{Tag: s.tag}))
+	for i, client := range s.sortClients(domain) {
 		if !option.FakeEnable && strings.EqualFold(client.Name(), "FakeDNS") {
 			newError("skip DNS resolution for domain ", domain, " at server ", client.Name()).AtDebug().WriteToLog()
 			continue
 		}
-		ips, err := client.QueryIP(ctx, domain, option, s.disableCache)
+		wg.Add(1)
+		go func(client *Client, i int) {
+			defer wg.Done()
+			ips, err := client.QueryIP(ctx, domain, option, s.disableCache)
+			groupIps.Store(i, ips)
+			if err != nil {
+				if succ == false {
+					newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
+					errs = append(errs, err)
+				}
+			} else {
+				if i == 0 {
+					succ = true
+					cancel()
+				}
+			}
+		}(client, i)
+	}
+	wg.Wait()
+	cancel()
+	for i := 0; ; i++ {
+		value, ok := groupIps.Load(i)
+		if !ok {
+			break
+		}
+		ips := value.([]net.IP)
 		if len(ips) > 0 {
 			return ips, nil
-		}
-		if err != nil {
-			newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
-			errs = append(errs, err)
-		}
-		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
-			return nil, err
 		}
 	}
 
