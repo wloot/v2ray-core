@@ -115,7 +115,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	output := link.Writer
 
 	var conn internet.Connection
-	err := retry.ExponentialBackoff(5, 100).On(func() error {
+	err := retry.ExponentialBackoff(3, 100).On(func() error {
 		rawConn, err := dialer.Dial(ctx, destination)
 		if err != nil {
 			return err
