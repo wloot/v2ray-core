@@ -14,6 +14,7 @@ import (
 
 	core "github.com/v2fly/v2ray-core/v4"
 	"github.com/v2fly/v2ray-core/v4/common"
+	"github.com/v2fly/v2ray-core/v4/common/errors"
 	"github.com/v2fly/v2ray-core/v4/common/net"
 	"github.com/v2fly/v2ray-core/v4/common/protocol/dns"
 	udp_proto "github.com/v2fly/v2ray-core/v4/common/protocol/udp"
@@ -36,7 +37,11 @@ type ClassicNameServer struct {
 	udpServer *udp.Dispatcher
 	cleanup   *task.Periodic
 	reqID     uint32
+
+	lastTimeout time.Time
 }
+
+var errSkipDead = errors.New("skip this nameserver as throwing timeout not long ago")
 
 // NewClassicNameServer creates udp server object for remote resolving.
 func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher) *ClassicNameServer {
@@ -261,6 +266,10 @@ func (s *ClassicNameServer) QueryIP(ctx context.Context, domain string, clientIP
 		}
 	}
 
+	if time.Now().Sub(s.lastTimeout) < 5*time.Minute {
+		return nil, errSkipDead
+	}
+
 	// ipv4 and ipv6 belong to different subscription groups
 	var sub4, sub6 *pubsub.Subscriber
 	if option.IPv4Enable {
@@ -297,7 +306,11 @@ func (s *ClassicNameServer) QueryIP(ctx context.Context, domain string, clientIP
 
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			err := ctx.Err()
+			if err == context.DeadlineExceeded {
+				s.lastTimeout = time.Now()
+			}
+			return nil, err
 		case <-done:
 		}
 	}
