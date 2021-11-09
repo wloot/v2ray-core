@@ -115,11 +115,18 @@ func (w *PacketWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
 
 // WriteMultiBufferWithMetadata writes udp packet with destination specified
 func (w *PacketWriter) WriteMultiBufferWithMetadata(mb buf.MultiBuffer, dest net.Destination) error {
-	b := make([]byte, maxLength)
-	for !mb.IsEmpty() {
-		var length int
-		mb, length = buf.SplitBytes(mb, b)
-		if _, err := w.writePacket(b[:length], dest); err != nil {
+	for {
+		mb2, b := buf.SplitFirst(mb)
+		mb = mb2
+		if b == nil {
+			break
+		}
+		source := dest
+		if b.UDP != nil {
+			source.Address = net.ParseAddress(b.UDP.Addr)
+			source.Port = net.Port(b.UDP.Port)
+		}
+		if _, err := w.writePacket(b.Bytes(), source); err != nil {
 			buf.ReleaseMulti(mb)
 			return err
 		}
@@ -267,6 +274,10 @@ func (r *PacketReader) ReadMultiBufferWithMetadata() (*PacketPayload, error) {
 		}
 
 		b := buf.New()
+		b.UDP = &buf.UDP{
+			Addr: dest.Address.String(),
+			Port: dest.Port.Value(),
+		}
 		mb = append(mb, b)
 		n, err := b.ReadFullFrom(r, int32(length))
 		if err != nil {
