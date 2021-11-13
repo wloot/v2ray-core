@@ -9,6 +9,21 @@ import (
 	"github.com/v2fly/v2ray-core/v5/features"
 )
 
+type Mapper interface {
+	Add(string, int)
+	Del(string)
+	TrimAndGet() []string
+}
+
+func GetOrRegisterMapper(m Manager, name string) (Mapper, error) {
+	mapper := m.GetMapper(name)
+	if mapper != nil {
+		return mapper, nil
+	}
+
+	return m.RegisterMapper(name)
+}
+
 // Counter is the interface for stats counters.
 //
 // v2ray:api:stable
@@ -77,6 +92,10 @@ type Manager interface {
 	UnregisterChannel(string) error
 	// GetChannel returns a channel by its identifier.
 	GetChannel(string) Channel
+
+	RegisterMapper(string) (Mapper, error)
+	UnregisterMapper(string) error
+	GetMapper(string) Mapper
 }
 
 // GetOrRegisterCounter tries to get the StatCounter first. If not exist, it then tries to create a new counter.

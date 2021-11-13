@@ -5,17 +5,81 @@ package stats
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
 )
 
+type Mapper struct {
+	kv sync.Map
+}
+
+func (m *Mapper) Add(k string, v int) {
+	m.kv.Store(k, v)
+}
+
+func (m *Mapper) Del(k string) {
+	m.kv.Delete(k)
+}
+
+func (m *Mapper) TrimAndGet() []string {
+	var ips []string
+	deadline := int(time.Now().Unix()) - 300
+
+	m.kv.Range(func(key interface{}, value interface{}) bool {
+		if value.(int) < deadline {
+			m.Del(key.(string))
+		} else {
+			ips = append(ips, key.(string))
+		}
+		return true
+	})
+
+	return ips
+}
+
+func (m *Manager) RegisterMapper(name string) (stats.Mapper, error) {
+	m.access.Lock()
+	defer m.access.Unlock()
+
+	if _, found := m.maps[name]; found {
+		return nil, newError("Mapper ", name, " already registered.")
+	}
+	newError("create new mapper ", name).AtDebug().WriteToLog()
+	mapper := new(Mapper)
+	m.maps[name] = mapper
+	return mapper, nil
+}
+
+func (m *Manager) UnregisterMapper(name string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+
+	if _, found := m.maps[name]; found {
+		newError("remove mapper ", name).AtDebug().WriteToLog()
+		delete(m.maps, name)
+	}
+	return nil
+}
+
+func (m *Manager) GetMapper(name string) stats.Mapper {
+	m.access.RLock()
+	defer m.access.RUnlock()
+
+	if mapper, found := m.maps[name]; found {
+		return mapper
+	}
+	return nil
+}
+
 // Manager is an implementation of stats.Manager.
 type Manager struct {
 	access   sync.RWMutex
 	counters map[string]*Counter
 	channels map[string]*Channel
+	maps     map[string]*Mapper
 	running  bool
 }
 
@@ -24,6 +88,7 @@ func NewManager(ctx context.Context, config *Config) (*Manager, error) {
 	m := &Manager{
 		counters: make(map[string]*Counter),
 		channels: make(map[string]*Channel),
+		maps:     make(map[string]*Mapper),
 	}
 
 	return m, nil
