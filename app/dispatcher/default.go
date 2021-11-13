@@ -171,6 +171,11 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 				}
 			}
 		}
+		if p.Stats.UserIP {
+			if m, _ := stats.GetOrRegisterMapper(d.stats, user.Email); m != nil {
+				m.Add(sessionInbound.Source.Address.String(), int(time.Now().Unix()))
+			}
+		}
 	}
 
 	return inboundLink, outboundLink
