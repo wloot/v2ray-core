@@ -18,6 +18,7 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type StatsServiceClient interface {
+	GetIps(ctx context.Context, in *GetIpsRequest, opts ...grpc.CallOption) (*GetIpsResponse, error)
 	GetStats(ctx context.Context, in *GetStatsRequest, opts ...grpc.CallOption) (*GetStatsResponse, error)
 	QueryStats(ctx context.Context, in *QueryStatsRequest, opts ...grpc.CallOption) (*QueryStatsResponse, error)
 	GetSysStats(ctx context.Context, in *SysStatsRequest, opts ...grpc.CallOption) (*SysStatsResponse, error)
@@ -29,6 +30,15 @@ type statsServiceClient struct {
 
 func NewStatsServiceClient(cc grpc.ClientConnInterface) StatsServiceClient {
 	return &statsServiceClient{cc}
+}
+
+func (c *statsServiceClient) GetIps(ctx context.Context, in *GetIpsRequest, opts ...grpc.CallOption) (*GetIpsResponse, error) {
+	out := new(GetIpsResponse)
+	err := c.cc.Invoke(ctx, "/v2ray.core.app.stats.command.StatsService/GetIps", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *statsServiceClient) GetStats(ctx context.Context, in *GetStatsRequest, opts ...grpc.CallOption) (*GetStatsResponse, error) {
@@ -62,6 +72,7 @@ func (c *statsServiceClient) GetSysStats(ctx context.Context, in *SysStatsReques
 // All implementations must embed UnimplementedStatsServiceServer
 // for forward compatibility
 type StatsServiceServer interface {
+	GetIps(context.Context, *GetIpsRequest) (*GetIpsResponse, error)
 	GetStats(context.Context, *GetStatsRequest) (*GetStatsResponse, error)
 	QueryStats(context.Context, *QueryStatsRequest) (*QueryStatsResponse, error)
 	GetSysStats(context.Context, *SysStatsRequest) (*SysStatsResponse, error)
@@ -72,6 +83,9 @@ type StatsServiceServer interface {
 type UnimplementedStatsServiceServer struct {
 }
 
+func (UnimplementedStatsServiceServer) GetIps(context.Context, *GetIpsRequest) (*GetIpsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetIps not implemented")
+}
 func (UnimplementedStatsServiceServer) GetStats(context.Context, *GetStatsRequest) (*GetStatsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetStats not implemented")
 }
@@ -92,6 +106,24 @@ type UnsafeStatsServiceServer interface {
 
 func RegisterStatsServiceServer(s grpc.ServiceRegistrar, srv StatsServiceServer) {
 	s.RegisterService(&StatsService_ServiceDesc, srv)
+}
+
+func _StatsService_GetIps_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetIpsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(StatsServiceServer).GetIps(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/v2ray.core.app.stats.command.StatsService/GetIps",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(StatsServiceServer).GetIps(ctx, req.(*GetIpsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _StatsService_GetStats_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -155,6 +187,10 @@ var StatsService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "v2ray.core.app.stats.command.StatsService",
 	HandlerType: (*StatsServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetIps",
+			Handler:    _StatsService_GetIps_Handler,
+		},
 		{
 			MethodName: "GetStats",
 			Handler:    _StatsService_GetStats_Handler,
