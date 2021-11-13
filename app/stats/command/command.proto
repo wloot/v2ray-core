@@ -22,6 +22,19 @@ message GetStatsResponse {
   Stat stat = 1;
 }
 
+message GetIpsRequest {
+  string email = 1;
+}
+
+message Ips {
+  string email = 1;
+  repeated string ip = 2;
+}
+
+message GetIpsResponse {
+  Ips ips = 1;
+}
+
 message QueryStatsRequest {
   string pattern = 1;
   bool reset = 2;
@@ -47,6 +60,7 @@ message SysStatsResponse {
 }
 
 service StatsService {
+  rpc GetIps(GetIpsRequest) returns (GetIpsResponse) {}
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse) {}
   rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse) {}
   rpc GetSysStats(SysStatsRequest) returns (SysStatsResponse) {}
