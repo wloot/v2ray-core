@@ -48,6 +48,19 @@ func (s *statsServer) GetStats(ctx context.Context, request *GetStatsRequest) (*
 	}, nil
 }
 
+func (s *statsServer) GetIps(ctx context.Context, request *GetIpsRequest) (*GetIpsResponse, error) {
+	m := s.stats.GetMapper(request.Email)
+	if m == nil {
+		return nil, newError(request.Email, " not found.")
+	}
+	return &GetIpsResponse{
+		Ips: &Ips{
+			Email: request.Email,
+			Ip:    m.TrimAndGet(),
+		},
+	}, nil
+}
+
 func (s *statsServer) QueryStats(ctx context.Context, request *QueryStatsRequest) (*QueryStatsResponse, error) {
 	mgroup := &strmatcher.LinearIndexMatcher{}
 	if request.Pattern != "" {
