@@ -230,13 +230,11 @@ func (s *DNS) lookupIPInternal(domain string, option dns.IPOption) ([]net.IP, er
 			return ips, nil
 		}
 		if err != nil {
+			newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
 			errs = append(errs, err)
-			if err != errSkipDead {
-				newError("failed to lookup ip for domain ", domain, " at server ", client.Name()).Base(err).WriteToLog()
-				if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
-					return nil, err
-				}
-			}
+		}
+		if err != context.Canceled && err != context.DeadlineExceeded && err != errExpectedIPNonMatch {
+			return nil, err
 		}
 	}
 
