@@ -104,6 +104,12 @@ func LoadConfig(formatName string, input interface{}) (*Config, error) {
 		input = os.Stdin
 		cnt = 1
 	}
+	if arg, ok := input.(cmdarg.Arg); ok {
+		if arg.String() == "stdin:" {
+			log.Println("Using config from STDIN")
+			input = os.Stdin
+		}
+	}
 	if formatName == FormatAuto && cnt == 1 {
 		// This ensures only to call auto loader for multiple files,
 		// so that it can only care about merging scenarios
