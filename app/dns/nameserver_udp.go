@@ -5,7 +5,6 @@ package dns
 
 import (
 	"context"
-	gonet "net"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -40,15 +39,10 @@ type ClassicNameServer struct {
 }
 
 // NewClassicNameServer creates udp server object for remote resolving.
-func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher, name string) *ClassicNameServer {
+func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher) *ClassicNameServer {
 	// default to 53 if unspecific
 	if address.Port == 0 {
 		address.Port = net.Port(53)
-	}
-
-	netAddr := address.Address.String()
-	if address.Port != 53 {
-		netAddr = gonet.JoinHostPort(netAddr, address.Port.String())
 	}
 
 	s := &ClassicNameServer{
@@ -56,14 +50,14 @@ func NewClassicNameServer(address net.Destination, dispatcher routing.Dispatcher
 		ips:      make(map[string]record),
 		requests: make(map[uint16]dnsRequest),
 		pub:      pubsub.NewService(),
-		name:     name + "//" + strings.ToUpper(netAddr),
+		name:     strings.ToUpper(address.String()),
 	}
 	s.cleanup = &task.Periodic{
 		Interval: time.Minute,
 		Execute:  s.Cleanup,
 	}
 	s.udpServer = udp.NewSplitDispatcher(dispatcher, s.HandleResponse)
-	newError("DNS: created ", name, " client initialized for ", netAddr).AtInfo().WriteToLog()
+	newError("DNS: created UDP client initialized for ", address.NetAddr()).AtInfo().WriteToLog()
 	return s
 }
 
