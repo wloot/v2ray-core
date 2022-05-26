@@ -17,23 +17,7 @@ type Mapper struct {
 }
 
 func (m *Mapper) Add(k string, v int) {
-	stable := 0
-	value, ok := m.kv.Load(k)
-	if ok {
-		stable = value.([]int)[1]
-		switch stable {
-		case 2:
-			stable = 1
-		case 0:
-			delta := v - value.([]int)[0]
-			if delta >= 20 {
-				stable = 1
-			} else if delta < 150 {
-				v = value.([]int)[0]
-			}
-		}
-	}
-	m.kv.Store(k, []int{v, stable})
+	m.kv.Store(k, v)
 }
 
 func (m *Mapper) Del(k string) {
@@ -42,16 +26,13 @@ func (m *Mapper) Del(k string) {
 
 func (m *Mapper) TrimAndGet() []string {
 	var ips []string
-	deadline := int(time.Now().Unix()) - 150
+	deadline := int(time.Now().Unix()) - 300
 
 	m.kv.Range(func(key interface{}, value interface{}) bool {
-		k := key.(string)
-		v := value.([]int)
-		if v[0] < deadline {
-			m.kv.Delete(k)
-		} else if v[1] == 1 {
-			ips = append(ips, k)
-			m.kv.Store(k, []int{v[0], 2})
+		if value.(int) < deadline {
+			m.Del(key.(string))
+		} else {
+			ips = append(ips, key.(string))
 		}
 		return true
 	})
