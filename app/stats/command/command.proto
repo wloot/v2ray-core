@@ -37,6 +37,20 @@ message GetIpsResponse {
   Ips ips = 1;
 }
 
+message GetStatsByIpRequest {
+  string email = 1;
+  string ip = 2;
+}
+
+message StatsByIp {
+  int64 up = 1;
+  int64 down = 2;
+}
+
+message GetStatsByIpResponse {
+  StatsByIp stat = 1;
+}
+
 message QueryStatsRequest {
   // Deprecated, use Patterns instead
   string pattern = 1;
@@ -66,6 +80,7 @@ message SysStatsResponse {
 
 service StatsService {
   rpc GetIps(GetIpsRequest) returns (GetIpsResponse) {}
+  rpc GetStatsByIp(GetStatsByIpRequest) returns (GetStatsByIpResponse) {}
   rpc GetStats(GetStatsRequest) returns (GetStatsResponse) {}
   rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse) {}
   rpc GetSysStats(SysStatsRequest) returns (SysStatsResponse) {}

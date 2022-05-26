@@ -5,7 +5,6 @@ package stats
 import (
 	"context"
 	"sync"
-	"time"
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -13,31 +12,55 @@ import (
 )
 
 type Mapper struct {
-	kv sync.Map
-}
-
-func (m *Mapper) Add(k string, v int) {
-	m.kv.Store(k, v)
-}
-
-func (m *Mapper) Del(k string) {
-	m.kv.Delete(k)
-}
-
-func (m *Mapper) TrimAndGet() []string {
-	var ips []string
-	deadline := int(time.Now().Unix()) - 300
-
-	m.kv.Range(func(key interface{}, value interface{}) bool {
-		if value.(int) < deadline {
-			m.Del(key.(string))
-		} else {
-			ips = append(ips, key.(string))
-		}
-		return true
+	kv map[string](struct {
+		up   int64
+		down int64
 	})
+	mutex sync.Mutex
+}
 
-	return ips
+func (m *Mapper) Add(k string, up int64, down int64) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	var u int64
+	var d int64
+	if v, ok := m.kv[k]; ok {
+		u = v.up
+		d = v.down
+	}
+	m.kv[k] = struct {
+		up   int64
+		down int64
+	}{
+		up:   u + up,
+		down: d + down,
+	}
+}
+
+func (m *Mapper) GetKeys() []string {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	var keys []string
+	for k := range m.kv {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
+func (m *Mapper) GetVaule(key string) (int64, int64) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	var up int64
+	var down int64
+	if v, ok := m.kv[key]; ok {
+		up = v.up
+		down = v.down
+		delete(m.kv, key)
+	}
+	return up, down
 }
 
 func (m *Manager) RegisterMapper(name string) (stats.Mapper, error) {
@@ -49,6 +72,10 @@ func (m *Manager) RegisterMapper(name string) (stats.Mapper, error) {
 	}
 	newError("create new mapper ", name).AtDebug().WriteToLog()
 	mapper := new(Mapper)
+	mapper.kv = make(map[string](struct {
+		up   int64
+		down int64
+	}))
 	m.maps[name] = mapper
 	return mapper, nil
 }
