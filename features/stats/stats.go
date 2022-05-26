@@ -10,9 +10,9 @@ import (
 )
 
 type Mapper interface {
-	Add(string, int)
-	Del(string)
-	TrimAndGet() []string
+	Add(string, int64, int64)
+	GetKeys() []string
+	GetVaule(string) (int64, int64)
 }
 
 func GetOrRegisterMapper(m Manager, name string) (Mapper, error) {

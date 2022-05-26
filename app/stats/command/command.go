@@ -56,8 +56,21 @@ func (s *statsServer) GetIps(ctx context.Context, request *GetIpsRequest) (*GetI
 	return &GetIpsResponse{
 		Ips: &Ips{
 			Email: request.Email,
-			Ip:    m.TrimAndGet(),
+			Ip:    m.GetKeys(),
 		},
+	}, nil
+}
+
+func (s *statsServer) GetStatsByIp(ctx context.Context, request *GetStatsByIpRequest) (*GetStatsByIpResponse, error) {
+	m := s.stats.GetMapper(request.Email)
+	if m == nil {
+		return nil, newError(request.Email, " not found.")
+	}
+
+	var stat StatsByIp
+	stat.Up, stat.Down = m.GetVaule(request.Ip)
+	return &GetStatsByIpResponse{
+		Stat: &stat,
 	}, nil
 }
 

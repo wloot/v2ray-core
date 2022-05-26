@@ -23,3 +23,27 @@ func (w *SizeStatWriter) Close() error {
 func (w *SizeStatWriter) Interrupt() {
 	common.Interrupt(w.Writer)
 }
+
+type PerIPStatWriter struct {
+	Address string
+	Uplink  bool
+	Mapper  stats.Mapper
+	Writer  buf.Writer
+}
+
+func (w *PerIPStatWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	if w.Uplink {
+		w.Mapper.Add(w.Address, int64(mb.Len()), 0)
+	} else {
+		w.Mapper.Add(w.Address, 0, int64(mb.Len()))
+	}
+	return w.Writer.WriteMultiBuffer(mb)
+}
+
+func (w *PerIPStatWriter) Close() error {
+	return common.Close(w.Writer)
+}
+
+func (w *PerIPStatWriter) Interrupt() {
+	common.Interrupt(w.Writer)
+}

@@ -151,7 +151,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 
 	if user != nil && len(user.Email) > 0 {
 		p := d.policy.ForLevel(user.Level)
-		if p.Stats.UserUplink {
+		if !p.Stats.UserIP && p.Stats.UserUplink {
 			name := "user>>>" + user.Email + ">>>traffic>>>uplink"
 			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
 				inboundLink.Writer = &SizeStatWriter{
@@ -160,7 +160,7 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 				}
 			}
 		}
-		if p.Stats.UserDownlink {
+		if !p.Stats.UserIP && p.Stats.UserDownlink {
 			name := "user>>>" + user.Email + ">>>traffic>>>downlink"
 			if c, _ := stats.GetOrRegisterCounter(d.stats, name); c != nil {
 				outboundLink.Writer = &SizeStatWriter{
@@ -171,7 +171,18 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 		}
 		if p.Stats.UserIP {
 			if m, _ := stats.GetOrRegisterMapper(d.stats, user.Email); m != nil {
-				m.Add(sessionInbound.Source.Address.String(), int(time.Now().Unix()))
+				inboundLink.Writer = &PerIPStatWriter{
+					Address: sessionInbound.Source.Address.String(),
+					Uplink:  true,
+					Mapper:  m,
+					Writer:  inboundLink.Writer,
+				}
+				outboundLink.Writer = &PerIPStatWriter{
+					Address: sessionInbound.Source.Address.String(),
+					Uplink:  false,
+					Mapper:  m,
+					Writer:  outboundLink.Writer,
+				}
 			}
 		}
 	}
