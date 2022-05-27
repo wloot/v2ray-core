@@ -7,6 +7,7 @@ import (
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/features"
+	"golang.org/x/time/rate"
 )
 
 type Mapper interface {
@@ -96,6 +97,10 @@ type Manager interface {
 	RegisterMapper(string) (Mapper, error)
 	UnregisterMapper(string) error
 	GetMapper(string) Mapper
+
+	RegisterLimit(string, int) (*rate.Limiter, error)
+	UnregisterLimit(string) error
+	GetLimit(string) *rate.Limiter
 }
 
 // GetOrRegisterCounter tries to get the StatCounter first. If not exist, it then tries to create a new counter.
@@ -106,6 +111,15 @@ func GetOrRegisterCounter(m Manager, name string) (Counter, error) {
 	}
 
 	return m.RegisterCounter(name)
+}
+
+func GetOrRegisterLimit(m Manager, name string, freq int) (*rate.Limiter, error) {
+	limit := m.GetLimit(name)
+	if limit != nil {
+		return limit, nil
+	}
+
+	return m.RegisterLimit(name, freq)
 }
 
 // GetOrRegisterChannel tries to get the StatChannel first. If not exist, it then tries to create a new channel.

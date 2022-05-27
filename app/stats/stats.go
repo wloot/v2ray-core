@@ -9,6 +9,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
 	"github.com/v2fly/v2ray-core/v5/features/stats"
+	"golang.org/x/time/rate"
 )
 
 type Mapper struct {
@@ -107,6 +108,7 @@ type Manager struct {
 	counters map[string]*Counter
 	channels map[string]*Channel
 	maps     map[string]*Mapper
+	limits   map[string]*rate.Limiter
 	running  bool
 }
 
@@ -116,6 +118,7 @@ func NewManager(ctx context.Context, config *Config) (*Manager, error) {
 		counters: make(map[string]*Counter),
 		channels: make(map[string]*Channel),
 		maps:     make(map[string]*Mapper),
+		limits:   make(map[string]*rate.Limiter),
 	}
 
 	return m, nil
@@ -159,6 +162,40 @@ func (m *Manager) GetCounter(name string) stats.Counter {
 
 	if c, found := m.counters[name]; found {
 		return c
+	}
+	return nil
+}
+
+func (m *Manager) RegisterLimit(name string, freq int) (*rate.Limiter, error) {
+	m.access.Lock()
+	defer m.access.Unlock()
+
+	if _, found := m.limits[name]; found {
+		return nil, newError("Limit ", name, " already registered.")
+	}
+	newError("create new limit ", name).AtDebug().WriteToLog()
+	l := rate.NewLimiter(rate.Limit(freq), freq*3/2)
+	m.limits[name] = l
+	return l, nil
+}
+
+func (m *Manager) UnregisterLimit(name string) error {
+	m.access.Lock()
+	defer m.access.Unlock()
+
+	if _, found := m.limits[name]; found {
+		newError("remove limit ", name).AtDebug().WriteToLog()
+		delete(m.limits, name)
+	}
+	return nil
+}
+
+func (m *Manager) GetLimit(name string) *rate.Limiter {
+	m.access.RLock()
+	defer m.access.RUnlock()
+
+	if l, found := m.limits[name]; found {
+		return l
 	}
 	return nil
 }
