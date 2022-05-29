@@ -184,17 +184,6 @@ func (d *DefaultDispatcher) getLink(ctx context.Context) (*transport.Link, *tran
 				}
 			}
 		}
-		limit := 1024 * 500
-		if l, _ := stats.GetOrRegisterLimit(d.stats, user.Email, limit); l != nil {
-			inboundLink.Writer = &LimitWriter{
-				Limit:  l,
-				Writer: inboundLink.Writer,
-			}
-			outboundLink.Writer = &LimitWriter{
-				Limit:  l,
-				Writer: outboundLink.Writer,
-			}
-		}
 	}
 
 	return inboundLink, outboundLink
