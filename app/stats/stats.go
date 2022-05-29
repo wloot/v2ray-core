@@ -5,6 +5,7 @@ package stats
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/errors"
@@ -13,8 +14,9 @@ import (
 
 type Mapper struct {
 	kv map[string](struct {
-		up   int64
-		down int64
+		up     int64
+		down   int64
+		stable int64
 	})
 	mutex sync.Mutex
 }
@@ -22,19 +24,34 @@ type Mapper struct {
 func (m *Mapper) Add(k string, up int64, down int64) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+	now := time.Now().Unix()
 
 	var u int64
 	var d int64
+	var stable int64
 	if v, ok := m.kv[k]; ok {
 		u = v.up
 		d = v.down
+		stable = v.stable
+	}
+	if stable > 1 && stable <= now-20 {
+		if stable >= now-90 {
+			stable = 1
+		} else {
+			stable = now
+		}
+	}
+	if stable == 0 {
+		stable = now
 	}
 	m.kv[k] = struct {
-		up   int64
-		down int64
+		up     int64
+		down   int64
+		stable int64
 	}{
-		up:   u + up,
-		down: d + down,
+		up:     u + up,
+		down:   d + down,
+		stable: stable,
 	}
 }
 
@@ -43,8 +60,16 @@ func (m *Mapper) GetKeys() []string {
 	defer m.mutex.Unlock()
 
 	var keys []string
-	for k := range m.kv {
+	nonstable := false
+	for k, v := range m.kv {
+		if v.stable != 1 {
+			nonstable = true
+			continue
+		}
 		keys = append(keys, k)
+	}
+	if nonstable == true {
+		keys = append(keys, "")
 	}
 	return keys
 }
@@ -52,6 +77,33 @@ func (m *Mapper) GetKeys() []string {
 func (m *Mapper) GetVaule(key string) (int64, int64) {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+	now := time.Now().Unix()
+
+	if key == "" {
+		var up int64
+		var down int64
+		for k, v := range m.kv {
+			if v.stable == 1 {
+				continue
+			}
+			up += v.up
+			down += v.down
+			if v.stable < now-90 {
+				delete(m.kv, k)
+				continue
+			}
+			m.kv[k] = struct {
+				up     int64
+				down   int64
+				stable int64
+			}{
+				up:     0,
+				down:   0,
+				stable: v.stable,
+			}
+		}
+		return up, down
+	}
 
 	var up int64
 	var down int64
@@ -73,8 +125,9 @@ func (m *Manager) RegisterMapper(name string) (stats.Mapper, error) {
 	newError("create new mapper ", name).AtDebug().WriteToLog()
 	mapper := new(Mapper)
 	mapper.kv = make(map[string](struct {
-		up   int64
-		down int64
+		up     int64
+		down   int64
+		stable int64
 	}))
 	m.maps[name] = mapper
 	return mapper, nil
