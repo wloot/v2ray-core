@@ -76,7 +76,7 @@ type ServerConfig struct {
 	sizeCache     protoimpl.SizeCache
 	unknownFields protoimpl.UnknownFields
 
-	// Deprecated: Do not use.
+	// Deprecated: Marked as deprecated in proxy/http/config.proto.
 	Timeout          uint32            `protobuf:"varint,1,opt,name=timeout,proto3" json:"timeout,omitempty"`
 	Accounts         map[string]string `protobuf:"bytes,2,rep,name=accounts,proto3" json:"accounts,omitempty" protobuf_key:"bytes,1,opt,name=key,proto3" protobuf_val:"bytes,2,opt,name=value,proto3"`
 	AllowTransparent bool              `protobuf:"varint,3,opt,name=allow_transparent,json=allowTransparent,proto3" json:"allow_transparent,omitempty"`
@@ -115,7 +115,7 @@ func (*ServerConfig) Descriptor() ([]byte, []int) {
 	return file_proxy_http_config_proto_rawDescGZIP(), []int{1}
 }
 
-// Deprecated: Do not use.
+// Deprecated: Marked as deprecated in proxy/http/config.proto.
 func (x *ServerConfig) GetTimeout() uint32 {
 	if x != nil {
 		return x.Timeout
