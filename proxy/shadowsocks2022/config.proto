@@ -20,3 +20,17 @@ message ClientConfig {
   v2ray.core.common.net.IPOrDomain address = 5;
   uint32 port = 6;
 }
+
+import "common/protocol/user.proto";
+import "common/net/network.proto";
+
+message ServerConfig {
+  string method = 1;
+  string key = 2;
+  repeated v2ray.core.common.net.Network network = 3;
+  repeated v2ray.core.common.protocol.User user = 4;
+}
+
+message Account {
+  string key = 1;
+}
