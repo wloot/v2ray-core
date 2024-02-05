@@ -2,7 +2,6 @@ package shadowsocks2022
 
 import (
 	"context"
-	"io"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ import (
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/task"
 	"github.com/v2fly/v2ray-core/v5/common/uuid"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
 	"github.com/v2fly/v2ray-core/v5/transport"
@@ -212,7 +212,7 @@ func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 	if err != nil {
 		return err
 	}
-	return copyConn(ctx, conn, link, conn)
+	return copyConn(ctx, conn, link)
 }
 
 func (i *Inbound) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
@@ -364,54 +364,30 @@ func returnError(err error) error {
 	return err
 }
 
-func copyConn(ctx context.Context, inboundConn net.Conn, link *transport.Link, serverConn net.Conn) error {
-	conn := &pipeConnWrapper{
-		W:    link.Writer,
-		Conn: inboundConn,
-	}
-	if ir, ok := link.Reader.(io.Reader); ok {
-		conn.R = ir
-	} else {
-		conn.R = &buf.BufferedReader{Reader: link.Reader}
-	}
-	return returnError(bufio.CopyConn(ctx, conn, serverConn))
-}
+func copyConn(ctx context.Context, conn net.Conn, link *transport.Link) error {
+	clientReader := buf.NewReader(conn)
+	clientWriter := buf.NewWriter(conn)
 
-type pipeConnWrapper struct {
-	R io.Reader
-	W buf.Writer
-	net.Conn
-}
-
-func (w *pipeConnWrapper) Close() error {
-	return nil
-}
-
-func (w *pipeConnWrapper) Read(b []byte) (n int, err error) {
-	return w.R.Read(b)
-}
-
-func (w *pipeConnWrapper) Write(p []byte) (n int, err error) {
-	n = len(p)
-	var mb buf.MultiBuffer
-	pLen := len(p)
-	for pLen > 0 {
-		buffer := buf.New()
-		if pLen > buf.Size {
-			_, err = buffer.Write(p[:buf.Size])
-			p = p[buf.Size:]
-		} else {
-			buffer.Write(p)
+	requestDone := func() error {
+		if err := buf.Copy(clientReader, link.Writer); err != nil {
+			return newError("failed to transfer request").Base(err)
 		}
-		pLen -= int(buffer.Len())
-		mb = append(mb, buffer)
+		return nil
 	}
-	err = w.W.WriteMultiBuffer(mb)
-	if err != nil {
-		n = 0
-		buf.ReleaseMulti(mb)
+
+	responseDone := func() error {
+		if err := buf.Copy(link.Reader, clientWriter); err != nil {
+			return newError("failed to write response").Base(err)
+		}
+		return nil
 	}
-	return
+
+	requestDonePost := task.OnSuccess(requestDone, task.Close(link.Writer))
+	if err := task.Run(ctx, requestDonePost, responseDone); err != nil {
+		common.Must(common.Interrupt(link.Reader))
+		common.Must(common.Interrupt(link.Writer))
+	}
+	return nil
 }
 
 type dispatcherKey struct{}
