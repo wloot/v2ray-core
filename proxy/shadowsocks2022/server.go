@@ -80,25 +80,27 @@ func NewMultiServer(ctx context.Context, config *ServerConfig) (*Inbound, error)
 	inbound := &Inbound{
 		networks: networks,
 	}
-	for i, user := range config.User {
-		mUser, err := user.ToMemoryUser()
-		if err != nil {
-			return nil, newError("failed to get user").Base(err)
-		}
-		if mUser.Email == "" {
-			u := uuid.New()
-			user.Email = "unnamed-user-" + strconv.Itoa(i) + "-" + u.String()
-		}
-		inbound.users = append(inbound.users, mUser)
-	}
 
 	service, err := shadowaead_2022.NewMultiServiceWithPassword[int](config.Method, config.Key, 300, inbound, nil)
 	if err != nil {
 		return nil, newError("create service").Base(err)
 	}
-	err = inbound.updateServiceWithUsers()
-	if err != nil {
-		return nil, newError("create service").Base(err)
+	if len(config.User) > 0 {
+		for i, user := range config.User {
+			mUser, err := user.ToMemoryUser()
+			if err != nil {
+				return nil, newError("failed to get user").Base(err)
+			}
+			if mUser.Email == "" {
+				u := uuid.New()
+				user.Email = "unnamed-user-" + strconv.Itoa(i) + "-" + u.String()
+			}
+			inbound.users = append(inbound.users, mUser)
+		}
+		err = inbound.updateServiceWithUsers()
+		if err != nil {
+			return nil, newError("create service").Base(err)
+		}
 	}
 
 	inbound.service = service
