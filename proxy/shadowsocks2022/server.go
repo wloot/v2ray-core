@@ -2,7 +2,7 @@ package shadowsocks2022
 
 import (
 	"context"
-	"strconv"
+	"encoding/base64"
 	"strings"
 	"sync"
 
@@ -13,16 +13,17 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
+	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
 	"github.com/v2fly/v2ray-core/v5/common/log"
 	"github.com/v2fly/v2ray-core/v5/common/net"
 	"github.com/v2fly/v2ray-core/v5/common/protocol"
 	"github.com/v2fly/v2ray-core/v5/common/session"
+	"github.com/v2fly/v2ray-core/v5/common/signal"
 	"github.com/v2fly/v2ray-core/v5/common/task"
-	"github.com/v2fly/v2ray-core/v5/common/uuid"
+	"github.com/v2fly/v2ray-core/v5/features/policy"
 	"github.com/v2fly/v2ray-core/v5/features/routing"
-	"github.com/v2fly/v2ray-core/v5/transport"
 	"github.com/v2fly/v2ray-core/v5/transport/internet"
 )
 
@@ -54,19 +55,24 @@ func init() {
 
 type Inbound struct {
 	sync.Mutex
-	users    []*protocol.MemoryUser
-	networks []net.Network
-	service  *shadowaead_2022.MultiService[int]
+	networks      []net.Network
+	policyManager policy.Manager
+	users         map[string]*protocol.MemoryUser
+	service       *shadowaead_2022.MultiService[string]
 }
 
 func (i *Inbound) updateServiceWithUsers() error {
-	userList := make([]int, 0, len(i.users))
-	passwordList := make([]string, 0, len(i.users))
-	for index := range i.users {
-		passwordList = append(passwordList, i.users[index].Account.(*MemoryAccount).Key)
-		userList = append(userList, index)
+	userList := make([]string, 0, len(i.users))
+	keyList := make([][]byte, 0, len(i.users))
+	for email := range i.users {
+		key, err := base64.StdEncoding.DecodeString(i.users[email].Account.(*MemoryAccount).Key)
+		if err != nil {
+			return newError("failed to decode user key").Base(err)
+		}
+		keyList = append(keyList, key)
+		userList = append(userList, email)
 	}
-	return i.service.UpdateUsersWithPasswords(userList, passwordList)
+	return i.service.UpdateUsers(userList, keyList)
 }
 
 func NewMultiServer(ctx context.Context, config *ServerConfig) (*Inbound, error) {
@@ -77,29 +83,35 @@ func NewMultiServer(ctx context.Context, config *ServerConfig) (*Inbound, error)
 			net.Network_UDP,
 		}
 	}
+	v := core.MustFromContext(ctx)
 	inbound := &Inbound{
-		networks: networks,
+		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
+		networks:      networks,
+		users:         make(map[string]*protocol.MemoryUser),
 	}
 
-	service, err := shadowaead_2022.NewMultiServiceWithPassword[int](config.Method, config.Key, 300, inbound, nil)
+	service, err := shadowaead_2022.NewMultiServiceWithPassword[string](config.Method, config.Key, 300, inbound, nil)
 	if err != nil {
-		return nil, newError("create service").Base(err)
+		return nil, newError("failed to create service").Base(err)
 	}
 	if len(config.User) > 0 {
-		for i, user := range config.User {
+		for _, user := range config.User {
 			mUser, err := user.ToMemoryUser()
 			if err != nil {
 				return nil, newError("failed to get user").Base(err)
 			}
-			if mUser.Email == "" {
-				u := uuid.New()
-				user.Email = "unnamed-user-" + strconv.Itoa(i) + "-" + u.String()
+			var email string
+			if mUser.Email != "" {
+				mUser.Email = strings.ToLower(mUser.Email)
+				email = mUser.Email
+			} else {
+				email = config.Key
 			}
-			inbound.users = append(inbound.users, mUser)
+			inbound.users[email] = mUser
 		}
 		err = inbound.updateServiceWithUsers()
 		if err != nil {
-			return nil, newError("create service").Base(err)
+			return nil, newError("failed to add users").Base(err)
 		}
 	}
 
@@ -112,12 +124,17 @@ func (i *Inbound) AddUser(ctx context.Context, u *protocol.MemoryUser) error {
 	i.Lock()
 	defer i.Unlock()
 
-	for idx := range i.users {
-		if i.users[idx].Account.Equals(u.Account) || i.users[idx].Email == u.Email {
+	var email string
+	if u.Email != "" {
+		u.Email = strings.ToLower(u.Email)
+		email = u.Email
+		if _, found := i.users[email]; found {
 			return newError("User ", u.Email, " already exists.")
 		}
+	} else {
+		email = u.Account.(*MemoryAccount).Key
 	}
-	i.users = append(i.users, u)
+	i.users[email] = u
 
 	return i.updateServiceWithUsers()
 }
@@ -127,27 +144,15 @@ func (i *Inbound) RemoveUser(ctx context.Context, email string) error {
 	if email == "" {
 		return newError("Email must not be empty.")
 	}
-
+	email = strings.ToLower(email)
 	i.Lock()
 	defer i.Unlock()
 
-	idx := -1
-	for ii, u := range i.users {
-		if strings.EqualFold(u.Email, email) {
-			idx = ii
-			break
-		}
-	}
-
-	if idx == -1 {
+	_, found := i.users[email]
+	if !found {
 		return newError("User ", email, " not found.")
 	}
-
-	ulen := len(i.users)
-
-	i.users[idx] = i.users[ulen-1]
-	i.users[ulen-1] = nil
-	i.users = i.users[:ulen-1]
+	delete(i.users, email)
 
 	return i.updateServiceWithUsers()
 }
@@ -192,8 +197,11 @@ func (i *Inbound) Process(ctx context.Context, network net.Network, connection i
 
 func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
 	inbound := session.InboundFromContext(ctx)
-	userInt, _ := A.UserFromContext[int](ctx)
-	user := i.users[userInt]
+	email, _ := A.UserFromContext[string](ctx)
+	user, found := i.users[email]
+	if !found {
+		user = &protocol.MemoryUser{}
+	}
 	inbound.User = user
 	ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
 		From:   metadata.Source,
@@ -207,18 +215,17 @@ func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 	if !destination.IsValid() {
 		return newError("invalid destination")
 	}
-
-	link, err := dispatcher.Dispatch(ctx, destination)
-	if err != nil {
-		return err
-	}
-	return copyConn(ctx, conn, link)
+	sessionPolicy := i.policyManager.ForLevel(user.Level)
+	return handleConnection(ctx, sessionPolicy, destination, buf.NewReader(conn), buf.NewWriter(conn), dispatcher)
 }
 
 func (i *Inbound) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
 	inbound := session.InboundFromContext(ctx)
-	userInt, _ := A.UserFromContext[int](ctx)
-	user := i.users[userInt]
+	email, _ := A.UserFromContext[string](ctx)
+	user, found := i.users[email]
+	if !found {
+		user = &protocol.MemoryUser{}
+	}
 	inbound.User = user
 	ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
 		From:   metadata.Source,
@@ -263,7 +270,6 @@ func (c *natPacketConn) WritePacket(buffer *B.Buffer, addr M.Socksaddr) error {
 }
 
 func toDestination(socksaddr M.Socksaddr, network net.Network) net.Destination {
-	// IsFqdn() implicitly checks if the domain name is valid
 	if socksaddr.IsFqdn() {
 		return net.Destination{
 			Network: network,
@@ -271,8 +277,6 @@ func toDestination(socksaddr M.Socksaddr, network net.Network) net.Destination {
 			Port:    net.Port(socksaddr.Port),
 		}
 	}
-
-	// IsIP() implicitly checks if the IP address is valid
 	if socksaddr.IsIP() {
 		return net.Destination{
 			Network: network,
@@ -280,7 +284,6 @@ func toDestination(socksaddr M.Socksaddr, network net.Network) net.Destination {
 			Port:    net.Port(socksaddr.Port),
 		}
 	}
-
 	return net.Destination{}
 }
 
@@ -364,19 +367,33 @@ func returnError(err error) error {
 	return err
 }
 
-func copyConn(ctx context.Context, conn net.Conn, link *transport.Link) error {
-	clientReader := buf.NewReader(conn)
-	clientWriter := buf.NewWriter(conn)
+func handleConnection(ctx context.Context, sessionPolicy policy.Session,
+	destination net.Destination,
+	clientReader buf.Reader,
+	clientWriter buf.Writer, dispatcher routing.Dispatcher,
+) error {
+	ctx, cancel := context.WithCancel(ctx)
+	timer := signal.CancelAfterInactivity(ctx, cancel, sessionPolicy.Timeouts.ConnectionIdle)
+	ctx = policy.ContextWithBufferPolicy(ctx, sessionPolicy.Buffer)
+
+	link, err := dispatcher.Dispatch(ctx, destination)
+	if err != nil {
+		return newError("failed to dispatch request to ", destination).Base(err)
+	}
 
 	requestDone := func() error {
-		if err := buf.Copy(clientReader, link.Writer); err != nil {
+		defer timer.SetTimeout(sessionPolicy.Timeouts.DownlinkOnly)
+
+		if err := buf.Copy(clientReader, link.Writer, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to transfer request").Base(err)
 		}
 		return nil
 	}
 
 	responseDone := func() error {
-		if err := buf.Copy(link.Reader, clientWriter); err != nil {
+		defer timer.SetTimeout(sessionPolicy.Timeouts.UplinkOnly)
+
+		if err := buf.Copy(link.Reader, clientWriter, buf.UpdateActivity(timer)); err != nil {
 			return newError("failed to write response").Base(err)
 		}
 		return nil
