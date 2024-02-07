@@ -66,19 +66,16 @@ func (h *Handler) policy() policy.Session {
 	return p
 }
 
-func (h *Handler) resolveIP(ctx context.Context, domain string, localAddr net.Address) net.Address {
+func (h *Handler) resolveIP(domain string, localAddr net.Address) (net.Address, error) {
 	ips, err := dns.LookupIPWithOption(h.dns, domain, dns.IPOption{
 		IPv4Enable: h.config.DomainStrategy == Config_USE_IP || h.config.DomainStrategy == Config_USE_IP4 || (localAddr != nil && localAddr.Family().IsIPv4()),
 		IPv6Enable: h.config.DomainStrategy == Config_USE_IP || h.config.DomainStrategy == Config_USE_IP6 || (localAddr != nil && localAddr.Family().IsIPv6()),
 		FakeEnable: false,
 	})
-	if err != nil {
-		newError("failed to get IP address for domain ", domain).Base(err).WriteToLog(session.ExportIDToError(ctx))
-	}
 	if len(ips) == 0 {
-		return nil
+		return nil, err
 	}
-	return net.IPAddress(ips[dice.Roll(len(ips))])
+	return net.IPAddress(ips[dice.Roll(len(ips))]), err
 }
 
 func isValidAddress(addr *net.IPOrDomain) bool {
@@ -108,7 +105,11 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 	}
 	if h.config.useIP() {
 		outbound.Resolver = func(ctx context.Context, domain string) net.Address {
-			return h.resolveIP(ctx, domain, dialer.Address())
+			addr, err := h.resolveIP(domain, dialer.Address())
+			if err != nil {
+				newError("failed to get IP address for domain ", domain).Base(err).WriteToLog(session.ExportIDToError(ctx))
+			}
+			return addr
 		}
 	}
 	newError("opening connection to ", destination).WriteToLog(session.ExportIDToError(ctx))
@@ -141,7 +142,7 @@ func (h *Handler) Process(ctx context.Context, link *transport.Link, dialer inte
 		if destination.Network == net.Network_TCP {
 			writer = buf.NewWriter(conn)
 		} else {
-			writer = newPacketWriter(conn)
+			writer = newPacketWriter(conn, h)
 		}
 
 		if err := buf.Copy(input, writer, buf.UpdateActivity(timer)); err != nil {
@@ -186,7 +187,8 @@ func newPacketReader(conn net.Conn) buf.Reader {
 	}
 	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
 		return &packetReader{
-			c, counter,
+			conn:    c,
+			counter: counter,
 		}
 	}
 	return &buf.PacketReader{Reader: conn}
@@ -216,7 +218,7 @@ func (r *packetReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 	return buf.MultiBuffer{b}, nil
 }
 
-func newPacketWriter(conn net.Conn) buf.Writer {
+func newPacketWriter(conn net.Conn, h *Handler) buf.Writer {
 	iConn := conn
 	statConn, ok := iConn.(*internet.StatCouterConnection)
 	if ok {
@@ -228,8 +230,9 @@ func newPacketWriter(conn net.Conn) buf.Writer {
 	}
 	if c, ok := iConn.(*internet.PacketConnWrapper); ok {
 		return &packetWriter{
-			c,
-			counter,
+			conn:    c,
+			counter: counter,
+			handler: h,
 		}
 	}
 	return &buf.SequentialWriter{Writer: conn}
@@ -238,26 +241,39 @@ func newPacketWriter(conn net.Conn) buf.Writer {
 type packetWriter struct {
 	conn    *internet.PacketConnWrapper
 	counter stats.Counter
+	handler *Handler
 }
 
 func (w *packetWriter) WriteMultiBuffer(mb buf.MultiBuffer) (err error) {
-	for _, buffer := range mb {
-		var n int
-		if buffer.UDP != nil {
-			destAddr, ex := net.ResolveUDPAddr("udp", buffer.UDP.Addr+":"+strconv.Itoa(int(buffer.UDP.Port)))
-			if ex != nil {
-				err = ex
-			} else {
-				n, err = w.conn.WriteTo(buffer.Bytes(), destAddr)
-			}
-		} else {
-			n, err = w.conn.Write(buffer.Bytes())
+	for {
+		mb2, b := buf.SplitFirst(mb)
+		mb = mb2
+		if b == nil {
+			break
 		}
+		var n int
+		var err error
+		if b.UDP != nil {
+			if w.handler.config.DomainStrategy != Config_AS_IS && net.ParseAddress(b.UDP.Addr).Family().IsDomain() {
+				addr, _ := w.handler.resolveIP(b.UDP.Addr, nil)
+				if addr != nil {
+					b.UDP.Addr = addr.IP().String()
+				}
+			}
+			destAddr, _ := net.ResolveUDPAddr("udp", b.UDP.Addr+":"+strconv.Itoa(int(b.UDP.Port)))
+			if destAddr == nil {
+				b.Release()
+				continue
+			}
+			n, err = w.conn.WriteTo(b.Bytes(), destAddr)
+		} else {
+			n, err = w.conn.Write(b.Bytes())
+		}
+		b.Release()
 		if err != nil {
 			buf.ReleaseMulti(mb)
 			return err
 		}
-		buffer.Release()
 		if w.counter != nil {
 			w.counter.Add(int64(n))
 		}

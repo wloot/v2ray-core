@@ -35,7 +35,6 @@ type Buffer struct {
 	start     int32
 	end       int32
 	ownership ownership
-	unmanaged bool
 	UDP       *UDP
 }
 
