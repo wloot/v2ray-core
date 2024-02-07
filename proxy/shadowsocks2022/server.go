@@ -7,10 +7,10 @@ import (
 	"sync"
 
 	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
-	A "github.com/sagernet/sing/common/auth"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	singAuth "github.com/sagernet/sing/common/auth"
+	singExceptions "github.com/sagernet/sing/common/exceptions"
+	singMetadata "github.com/sagernet/sing/common/metadata"
+	singNetwork "github.com/sagernet/sing/common/network"
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/common"
 	"github.com/v2fly/v2ray-core/v5/common/buf"
@@ -151,9 +151,9 @@ func (i *Inbound) Network() []net.Network {
 func (i *Inbound) Process(ctx context.Context, network net.Network, connection internet.Connection, dispatcher routing.Dispatcher) error {
 	inbound := session.InboundFromContext(ctx)
 
-	var metadata M.Metadata
+	var metadata singMetadata.Metadata
 	if inbound.Source.IsValid() {
-		metadata.Source = M.ParseSocksaddr(inbound.Source.NetAddr())
+		metadata.Source = singMetadata.ParseSocksaddr(inbound.Source.NetAddr())
 	}
 
 	ctx = contextWithDispatcher(ctx, dispatcher)
@@ -163,9 +163,9 @@ func (i *Inbound) Process(ctx context.Context, network net.Network, connection i
 	return nil
 }
 
-func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
+func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata singMetadata.Metadata) error {
 	inbound := session.InboundFromContext(ctx)
-	email, _ := A.UserFromContext[string](ctx)
+	email, _ := singAuth.UserFromContext[string](ctx)
 	user, found := i.users[email]
 	if !found {
 		user = &protocol.MemoryUser{}
@@ -187,25 +187,25 @@ func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 	return handleConnection(ctx, sessionPolicy, destination, buf.NewReader(conn), buf.NewWriter(conn), dispatcher)
 }
 
-func (i *Inbound) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
+func (i *Inbound) NewPacketConnection(ctx context.Context, conn singNetwork.PacketConn, metadata singMetadata.Metadata) error {
 	return nil
 }
 
 func (i *Inbound) NewError(ctx context.Context, err error) {
-	if E.IsClosed(err) {
+	if singExceptions.IsClosed(err) {
 		return
 	}
 	newError(err).AtWarning().WriteToLog()
 }
 
 func returnError(err error) error {
-	if E.IsClosed(err) {
+	if singExceptions.IsClosed(err) {
 		return nil
 	}
 	return err
 }
 
-func toDestination(socksaddr M.Socksaddr, network net.Network) net.Destination {
+func toDestination(socksaddr singMetadata.Socksaddr, network net.Network) net.Destination {
 	if socksaddr.IsFqdn() {
 		return net.Destination{
 			Network: network,
