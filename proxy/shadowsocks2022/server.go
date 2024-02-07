@@ -91,8 +91,7 @@ func NewMultiServer(ctx context.Context, config *ServerConfig) (*Inbound, error)
 			}
 			var email string
 			if mUser.Email != "" {
-				mUser.Email = strings.ToLower(mUser.Email)
-				email = mUser.Email
+				email = strings.ToLower(mUser.Email)
 			} else {
 				email = config.Key
 			}
@@ -115,8 +114,7 @@ func (i *Inbound) AddUser(ctx context.Context, u *protocol.MemoryUser) error {
 
 	var email string
 	if u.Email != "" {
-		u.Email = strings.ToLower(u.Email)
-		email = u.Email
+		email = strings.ToLower(u.Email)
 		if _, found := i.users[email]; found {
 			return newError("User ", u.Email, " already exists.")
 		}
