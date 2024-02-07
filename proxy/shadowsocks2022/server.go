@@ -8,8 +8,6 @@ import (
 
 	"github.com/sagernet/sing-shadowsocks/shadowaead_2022"
 	A "github.com/sagernet/sing/common/auth"
-	B "github.com/sagernet/sing/common/buf"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
@@ -55,7 +53,6 @@ func init() {
 
 type Inbound struct {
 	sync.Mutex
-	networks      []net.Network
 	policyManager policy.Manager
 	users         map[string]*protocol.MemoryUser
 	service       *shadowaead_2022.MultiService[string]
@@ -76,17 +73,9 @@ func (i *Inbound) updateServiceWithUsers() error {
 }
 
 func NewMultiServer(ctx context.Context, config *ServerConfig) (*Inbound, error) {
-	networks := config.Network
-	if len(networks) == 0 {
-		networks = []net.Network{
-			net.Network_TCP,
-			net.Network_UDP,
-		}
-	}
 	v := core.MustFromContext(ctx)
 	inbound := &Inbound{
 		policyManager: v.GetFeature(policy.ManagerType()).(policy.Manager),
-		networks:      networks,
 		users:         make(map[string]*protocol.MemoryUser),
 	}
 
@@ -158,7 +147,7 @@ func (i *Inbound) RemoveUser(ctx context.Context, email string) error {
 }
 
 func (i *Inbound) Network() []net.Network {
-	return i.networks
+	return []net.Network{net.Network_TCP}
 }
 
 func (i *Inbound) Process(ctx context.Context, network net.Network, connection internet.Connection, dispatcher routing.Dispatcher) error {
@@ -172,27 +161,8 @@ func (i *Inbound) Process(ctx context.Context, network net.Network, connection i
 	ctx = contextWithDispatcher(ctx, dispatcher)
 	if network == net.Network_TCP {
 		return returnError(i.service.NewConnection(ctx, connection, metadata))
-	} else {
-		reader := buf.NewReader(connection)
-		pc := &natPacketConn{connection}
-		for {
-			mb, err := reader.ReadMultiBuffer()
-			if err != nil {
-				buf.ReleaseMulti(mb)
-				return returnError(err)
-			}
-			for _, buffer := range mb {
-				packet := B.As(buffer.Bytes()).ToOwned()
-				buffer.Release()
-				err = i.service.NewPacket(ctx, pc, packet, metadata)
-				if err != nil {
-					packet.Release()
-					buf.ReleaseMulti(mb)
-					return err
-				}
-			}
-		}
 	}
+	return nil
 }
 
 func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.Metadata) error {
@@ -220,32 +190,7 @@ func (i *Inbound) NewConnection(ctx context.Context, conn net.Conn, metadata M.M
 }
 
 func (i *Inbound) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata M.Metadata) error {
-	inbound := session.InboundFromContext(ctx)
-	email, _ := A.UserFromContext[string](ctx)
-	user, found := i.users[email]
-	if !found {
-		user = &protocol.MemoryUser{}
-	}
-	inbound.User = user
-	ctx = log.ContextWithAccessMessage(ctx, &log.AccessMessage{
-		From:   metadata.Source,
-		To:     metadata.Destination,
-		Status: log.AccessAccepted,
-		Email:  user.Email,
-	})
-	newError("tunnelling request to udp:", metadata.Destination).WriteToLog(session.ExportIDToError(ctx))
-	dispatcher := dispatcherFromContext(ctx)
-	destination := toDestination(metadata.Destination, net.Network_UDP)
-	link, err := dispatcher.Dispatch(ctx, destination)
-	if err != nil {
-		return err
-	}
-	outConn := &packetConnWrapper{
-		Reader: link.Reader,
-		Writer: link.Writer,
-		Dest:   destination,
-	}
-	return bufio.CopyPacketConn(ctx, conn, outConn)
+	return nil
 }
 
 func (i *Inbound) NewError(ctx context.Context, err error) {
@@ -255,17 +200,10 @@ func (i *Inbound) NewError(ctx context.Context, err error) {
 	newError(err).AtWarning().WriteToLog()
 }
 
-type natPacketConn struct {
-	net.Conn
-}
-
-func (c *natPacketConn) ReadPacket(buffer *B.Buffer) (addr M.Socksaddr, err error) {
-	_, err = buffer.ReadFrom(c)
-	return
-}
-
-func (c *natPacketConn) WritePacket(buffer *B.Buffer, addr M.Socksaddr) error {
-	_, err := buffer.WriteTo(c)
+func returnError(err error) error {
+	if E.IsClosed(err) {
+		return nil
+	}
 	return err
 }
 
@@ -285,86 +223,6 @@ func toDestination(socksaddr M.Socksaddr, network net.Network) net.Destination {
 		}
 	}
 	return net.Destination{}
-}
-
-func toSocksaddr(destination net.Destination) M.Socksaddr {
-	var addr M.Socksaddr
-	switch destination.Address.Family() {
-	case net.AddressFamilyDomain:
-		addr.Fqdn = destination.Address.Domain()
-	default:
-		addr.Addr = M.AddrFromIP(destination.Address.IP())
-	}
-	addr.Port = uint16(destination.Port)
-	return addr
-}
-
-type packetConnWrapper struct {
-	buf.Reader
-	buf.Writer
-	net.Conn
-	Dest   net.Destination
-	cached buf.MultiBuffer
-}
-
-func (w *packetConnWrapper) ReadPacket(buffer *B.Buffer) (M.Socksaddr, error) {
-	if w.cached != nil {
-		mb, bb := buf.SplitFirst(w.cached)
-		if bb == nil {
-			w.cached = nil
-		} else {
-			buffer.Write(bb.Bytes())
-			w.cached = mb
-			destination := w.Dest
-			if bb.UDP != nil {
-				destination.Address = net.ParseAddress(bb.UDP.Addr)
-				destination.Port = net.Port(bb.UDP.Port)
-			}
-			bb.Release()
-			return toSocksaddr(destination), nil
-		}
-	}
-	mb, err := w.ReadMultiBuffer()
-	if err != nil {
-		return M.Socksaddr{}, err
-	}
-	nb, bb := buf.SplitFirst(mb)
-	if bb == nil {
-		return M.Socksaddr{}, nil
-	} else {
-		buffer.Write(bb.Bytes())
-		w.cached = nb
-		destination := w.Dest
-		if bb.UDP != nil {
-			destination.Address = net.ParseAddress(bb.UDP.Addr)
-			destination.Port = net.Port(bb.UDP.Port)
-		}
-		bb.Release()
-		return toSocksaddr(destination), nil
-	}
-}
-
-func (w *packetConnWrapper) WritePacket(buffer *B.Buffer, destination M.Socksaddr) error {
-	vBuf := buf.New()
-	vBuf.Write(buffer.Bytes())
-
-	vBuf.UDP = &buf.UDP{
-		Addr: destination.Addr.String(),
-		Port: destination.Port,
-	}
-	return w.Writer.WriteMultiBuffer(buf.MultiBuffer{vBuf})
-}
-
-func (w *packetConnWrapper) Close() error {
-	buf.ReleaseMulti(w.cached)
-	return nil
-}
-
-func returnError(err error) error {
-	if E.IsClosed(err) {
-		return nil
-	}
-	return err
 }
 
 func handleConnection(ctx context.Context, sessionPolicy policy.Session,
