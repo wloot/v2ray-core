@@ -2,6 +2,7 @@ package outbound
 
 import (
 	"context"
+	"os"
 
 	core "github.com/v2fly/v2ray-core/v5"
 	"github.com/v2fly/v2ray-core/v5/app/proxyman"
@@ -248,6 +249,10 @@ func (h *Handler) Dial(ctx context.Context, dest net.Destination) (internet.Conn
 				return h.resolveIP(ctx, domain, h.Address())
 			}
 		}
+	}
+
+	if conn, err := h.getUoTConnection(ctx, dest); err != os.ErrInvalid {
+		return conn, err
 	}
 
 	enablePacketAddrCapture := true
