@@ -41,7 +41,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1
 	gvisor.dev/gvisor v0.0.0-20240308024333-d73eca935c4a
 	h12.io/socks v1.0.3
-	lukechampine.com/blake3 v1.2.1
+	lukechampine.com/blake3 v1.3.0
 )
 
 require (
