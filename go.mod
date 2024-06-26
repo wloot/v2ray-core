@@ -39,7 +39,7 @@ require (
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.2
 	gopkg.in/yaml.v3 v3.0.1
-	gvisor.dev/gvisor v0.0.0-20240626004813-b4ca91450fb6
+	gvisor.dev/gvisor v0.0.0-20240625000500-31fa765f9b35
 	h12.io/socks v1.0.3
 	lukechampine.com/blake3 v1.3.0
 )
