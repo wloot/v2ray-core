@@ -75,6 +75,8 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 				lc.SetMultipathTCP(true)
 			case MPTCPState_Disable:
 				lc.SetMultipathTCP(false)
+			default:
+				lc.SetMultipathTCP(true)
 			}
 
 			if sockopt.TcpKeepAliveInterval != 0 || sockopt.TcpKeepAliveIdle != 0 {
