@@ -124,7 +124,6 @@ func (dl *DefaultListener) Listen(ctx context.Context, addr net.Addr, sockopt *S
 		}
 	}
 
-	lc.SetMultipathTCP(true)
 	l, err := lc.Listen(ctx, network, address)
 	l, err = callback(l, err)
 	if err == nil && sockopt != nil && sockopt.AcceptProxyProtocol {
